@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Bahrain Delivery - My Orders</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    
+    <style>
+        :root { --red: #DA291C; --bg: #f8f9fa; --input-bg: #f5f5f5; --benefit-blue: #005EB8; --success: #27ae60; }
+        body { margin: 0; font-family: 'Segoe UI', Arial; background: var(--bg); overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+        
+        .page { 
+            display: none; 
+            width: 100vw; 
+            height: 100vh; 
+            position: fixed; 
+            top: 0; 
+            left: 0;
+            flex-direction: column; 
+            background: var(--bg);
+        }
+        
+        .active-page { display: flex !important; }
+        
+        .header { 
+            background: white; 
+            height: 70px; 
+            display: flex; 
+            align-items: center; 
+            padding: 0 5px; 
+            border-bottom: 1px solid #eee; 
+            z-index: 1000; 
+            position: sticky; 
+            top: 0; 
+            flex-shrink: 0;
+        }
+        
+        .back-btn { font-size: 28px; color: var(--red); cursor: pointer; border: none; background: none; width: 60px; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .header-title { flex: 1; text-align: center; font-weight: bold; font-size: 20px; margin-right: -60px; }
+        
+        .content { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .card { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 95%; max-width: 400px; margin-bottom: 15px; box-sizing: border-box; }
+        .input-group { background: var(--input-bg); border-radius: 12px; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; width: 100%; box-sizing: border-box; display: flex; align-items: center; }
+        .input-group i { color: #888; margin-left: 10px; }
+        .input-group input { border: none; background: transparent; width: 100%; outline: none; text-align: right; font-size: 14px; font-family: inherit; }
+        .btn-red { background: var(--red); color: white; border: none; width: 100%; padding: 18px; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 18px; margin-top: 10px; transition: 0.2s; }
+        .btn-red:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-red:disabled { background: #ccc; cursor: not-allowed; }
+        .map-frame { height: 350px; width: 100%; border-radius: 15px; margin-bottom: 15px; border: 2px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); z-index: 5; }
+        .price-tag { background: #fff5f5; border: 2px dashed var(--red); border-radius: 15px; padding: 20px; text-align: center; width: 90%; margin-bottom: 20px; }
+        .pay-methods { display: flex; gap: 10px; margin-top: 10px; width: 100%; }
+        .pay-btn { flex: 1; padding: 15px; border-radius: 12px; border: 2px solid #eee; background: #f9f9f9; cursor: pointer; font-weight: bold; text-align: center; transition: 0.3s; }
+        .selected-cash { border-color: var(--success) !important; background: #e8f5e9 !important; color: var(--success); }
+        .selected-benefit { border-color: var(--benefit-blue) !important; background: #e3f2fd !important; color: var(--benefit-blue); }
+        .order-card { background:white; border-radius:18px; margin-bottom:15px; width:100%; overflow:hidden; border:1px solid #ddd; box-shadow: 0 4px 10px rgba(0,0,0,0.05); cursor: pointer; flex-shrink: 0; }
+        .gps-btn { background: white; border: 1.5px solid var(--red); color: var(--red); padding: 12px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-bottom: 10px; transition: 0.3s; }
+        
+        #full-details-overlay { 
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: white; 
+            z-index: 9999; 
+            overflow-y: auto; 
+            animation: slideUp 0.3s ease-out; 
+        }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .overlay-header { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; position: sticky; top: 0; background: white; z-index: 10; }
+        
+        .info-card-huge { 
+            background: #f9f9f9; 
+            padding: 20px; 
+            border-radius: 15px; 
+            margin-bottom: 20px; 
+            border-right: 8px solid #ccc; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .details-content-huge { padding: 25px; }
+    </style>
+</head>
+<body>
+
+<div id="page-login" class="page active-page">
+    <div class="content" style="justify-content: center;">
+        <h1 style="color:var(--red); font-size: 35px; margin-bottom: 10px;">توصيل البحرين</h1>
+        <p style="margin-bottom: 20px; color: #666;">أدخل بياناتك للمتابعة</p>
+        <div class="card">
+            <div class="input-group"><i class="fas fa-phone"></i><input type="tel" id="login-phone" placeholder="رقم الهاتف" value=""></div>
+            <div class="input-group"><i class="fas fa-lock"></i><input type="password" id="login-pass" placeholder="كلمة السر"></div>
+            <button class="btn-red" onclick="secureLogin()">تسجيل الدخول</button>
+            <div style="display: flex; justify-content: center; margin-top: 20px;">
+                <span>ليس لديك حساب؟ </span>
+                <span style="color:var(--red); cursor:pointer; font-weight:bold; margin-right:5px;" onclick="goTo('page-register')">إنشاء حساب جديد</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="page-register" class="page">
+    <div class="header"><button class="back-btn" onclick="goTo('page-login')"><i class="fas fa-arrow-right"></i></button><div class="header-title">تسجيل جديد</div></div>
+    <div class="content"><div class="card">
+        <div class="input-group"><input type="text" id="reg-name" placeholder="الاسم الكامل"></div>
+        <div class="input-group"><input type="tel" id="reg-phone" placeholder="رقم الهاتف"></div>
+        <div class="input-group"><input type="password" id="reg-pass" placeholder="كلمة المرور"></div>
+        <button class="btn-red" onclick="finishRegistration()">إتمام التسجيل</button>
+    </div></div>
+</div>
+
+<div id="page-home" class="page">
+    <div class="content" style="justify-content: center;">
+        <div class="card" style="text-align: center;">
+            <div style="background: #fff0f0; width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
+                <i class="fas fa-user" style="font-size: 35px; color: var(--red);"></i>
+            </div>
+            <h2 id="welcome-msg" style="margin-bottom: 25px;">مرحباً بك</h2>
+            <button class="btn-red" onclick="startNewOrder()"><i class="fas fa-plus-circle" style="margin-left: 8px;"></i>طلب توصيل جديد</button>
+            <button class="btn-red" style="background:#333; margin-top:15px;" onclick="goTo('page-history'); loadOrders();"><i class="fas fa-history" style="margin-left: 8px;"></i>طلباتي السابقة</button>
+            <button style="border:none; background:none; margin-top:25px; color:#888; font-weight: bold;" onclick="logout()">تسجيل الخروج <i class="fas fa-sign-out-alt"></i></button>
+        </div>
+    </div>
+</div>
+
+<div id="page-map-pickup" class="page">
+    <div class="header"><button class="back-btn" onclick="goTo('page-home')"><i class="fas fa-arrow-right"></i></button><div class="header-title">ادخل منطقة الاستلام في خانة البحث</div></div>
+    <div class="content">
+        <div id="map-pickup" class="map-frame"></div>
+        <button class="gps-btn" onclick="getCurrentLocation('p')"><i class="fas fa-location-arrow"></i><span>تحديد موقعي الحالي (GPS)</span></button>
+        <button class="btn-red" onclick="confirmStep('pickup')">تأكيد الموقع ✅</button>
+    </div>
+</div>
+
+<div id="page-info-pickup" class="page">
+    <div class="header"><button class="back-btn" onclick="goTo('page-map-pickup')"><i class="fas fa-arrow-right"></i></button><div class="header-title">تفاصيل الاستلام</div></div>
+    <div class="content"><div class="card">
+        <div class="input-group"><input type="tel" id="p-phone" placeholder="رقم هاتف المستلم منه" value=""></div>
+        <div class="input-group"><input type="text" id="p-area" placeholder="المنطقة"></div>
+        <div class="input-group"><input type="text" id="p-block" placeholder="مجمع"></div>
+        <div class="input-group"><input type="text" id="p-road" placeholder="طريق"></div>
+        <div class="input-group"><input type="text" id="p-house" placeholder="رقم المنزل او اسم مكان"></div>
+        <div class="input-group"><input type="text" id="p-type" placeholder="الشقة / الطابق (اختياري)"></div>
+        <div class="input-group"><input type="text" id="p-link" placeholder="رابط الموقع (اختياري)"></div>
+        <button class="btn-red" onclick="goTo('page-map-delivery')">التالي: موقع التسليم</button>
+    </div></div>
+</div>
+
+<div id="page-map-delivery" class="page">
+    <div class="header"><button class="back-btn" onclick="goTo('page-info-pickup')"><i class="fas fa-arrow-right"></i></button><div class="header-title">ادخل منطقة التسليم في خانة البحث </div></div>
+    <div class="content">
+        <div id="map-delivery" class="map-frame"></div>
+        <button class="gps-btn" onclick="getCurrentLocation('d')"><i class="fas fa-location-arrow"></i><span>تحديد موقعي الحالي (GPS)</span></button>
+        <button class="btn-red" onclick="confirmStep('delivery')">تأكيد الموقع ✅</button>
+    </div>
+</div>
+
+<div id="page-info-delivery" class="page">
+    <div class="header"><button class="back-btn" onclick="goTo('page-map-delivery')"><i class="fas fa-arrow-right"></i></button><div class="header-title">تفاصيل التسليم</div></div>
+    <div class="content"><div class="card">
+        <div class="input-group" style="border: 2px solid var(--red); background: #fff;">
+            <i class="fas fa-hand-holding-usd" style="color: var(--red);"></i>
+            <input type="number" id="d-collection" placeholder="مبلغ التحصيل من الزبون (د.ب)">
+        </div>
+        <div class="input-group"><input type="tel" id="d-phone" placeholder="رقم هاتف الزبون"></div>
+        <div class="input-group"><input type="text" id="d-area" placeholder="المنطقة"></div>
+        <div class="input-group"><input type="text" id="d-block" placeholder="مجمع"></div>
+        <div class="input-group"><input type="text" id="d-road" placeholder="طريق"></div>
+        <div class="input-group"><input type="text" id="d-house" placeholder="رقم المنزل او اسم المكان"></div>
+        <div class="input-group"><input type="text" id="d-type" placeholder="الشقة / الطابق (اختياري)"></div>
+        <div class="input-group"><input type="text" id="d-link" placeholder="رابط الموقع (اختياري)"></div>
+        <button class="btn-red" onclick="calculateFinalPrice()">التالي: الدفع</button>
+    </div></div>
+</div>
+
+<div id="page-payment" class="page">
+    <div class="header"><button class="back-btn" onclick="goTo('page-info-delivery')"><i class="fas fa-arrow-right"></i></button><div class="header-title">الدفع والارسال</div></div>
+    <div class="content">
+        <div class="price-tag"><h2 id="final-price">0.000 د.ب</h2><small id="dist-info">جاري الحساب...</small></div>
+        <div class="card">
+            <p style="text-align: center; font-weight: bold;">اختر طريقة دفع رسوم التوصيل</p>
+            <div class="pay-methods">
+                <div id="btn-cash" class="pay-btn" onclick="selectPay('Cash')"><i class="fas fa-money-bill-wave"></i><br>كاش</div>
+                <div id="btn-benefit" class="pay-btn" onclick="selectPay('Benefit')"><i class="fas fa-university"></i><br>بنفت</div>
+            </div>
+        </div>
+        <div id="ben-box" class="card" style="display:none; border: 1px solid var(--benefit-blue);">
+            <p style="text-align: center; font-size: 13px;">حول للآيبان وأرفق الصورة:</p>
+            <p style="text-align: center; background: #eee; padding: 8px; font-size: 12px; border-radius: 8px; font-family: monospace;"><b>BH98ABCO54254649101001</b></p>
+            <input type="file" id="pay-img" accept="image/*" style="width: 100%; margin-top: 10px;">
+        </div>
+        <button id="final-send-btn" class="btn-red" style="width: 85%; opacity: 0.5;" disabled onclick="preSendCheck()">إرسال الطلب الآن 🚀</button>
+    </div>
+</div>
+
+<div id="page-history" class="page">
+    <div class="header">
+        <button class="back-btn" onclick="goTo('page-home')"><i class="fas fa-arrow-right"></i></button>
+        <div class="header-title">طلباتي السابقة</div>
+    </div>
+    <div class="content" id="list-container" style="display: block; width: 100%; box-sizing: border-box; padding: 15px;">
+        </div>
+</div>
+
+<div id="page-success" class="page"><div class="content" style="justify-content: center;"><i class="fas fa-check-circle" style="font-size:80px; color:var(--success);"></i><h2 style="margin-top: 20px;">تم الإرسال بنجاح!</h2><button class="btn-red" style="width: 200px;" onclick="goTo('page-home')">العودة للرئيسية</button></div></div>
+
+<div id="full-details-overlay">
+    <div class="overlay-header">
+        <button onclick="closeDetails()" style="border:none; background:none; font-size:30px; color:var(--red); cursor:pointer; width: 50px;">×</button>
+        <h2 style="flex:1; text-align:center; margin:0; font-size: 18px;">تفاصيل الطلب الكاملة</h2>
+    </div>
+    <div class="details-content-huge" id="details-render-area">
+        </div>
+</div>
+
+<script>
+    const firebaseConfig = { databaseURL: "https://bahraindelivery-2be5f-default-rtdb.firebaseio.com/" };
+    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+    const db = firebase.database();
+
+    var mapP, markerP, mapD, markerD, selectedMethod = "", isSendingOrder = false;
+    var BH_BOUNDS = { latMin: 25.70, latMax: 26.40, lngMin: 50.30, lngMax: 50.90 };
+
+    function startNewOrder() {
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            if (input.id !== 'login-phone' && input.id !== 'login-pass') {
+                input.value = "";
+            }
+        });
+        selectedMethod = "";
+        const cashBtn = document.getElementById('btn-cash');
+        const benBtn = document.getElementById('btn-benefit');
+        const sendBtn = document.getElementById('final-send-btn');
+        const benBox = document.getElementById('ben-box');
+        if(cashBtn) cashBtn.className = 'pay-btn';
+        if(benBtn) benBtn.className = 'pay-btn';
+        if(benBox) benBox.style.display = 'none';
+        if(sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.style.opacity = "0.5";
+            sendBtn.innerText = "إرسال الطلب الآن 🚀";
+        }
+        if (markerP && mapP) { mapP.removeLayer(markerP); markerP = null; }
+        if (markerD && mapD) { mapD.removeLayer(markerD); markerD = null; }
+        goTo('page-map-pickup');
+    }
+
+    function goTo(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+        document.getElementById(id).classList.add('active-page');
+        if(id === 'page-map-pickup') {
+            initMap('map-pickup', 'p');
+            if(mapP) setTimeout(() => mapP.invalidateSize(), 400);
+        }
+        if(id === 'page-map-delivery') {
+            initMap('map-delivery', 'd');
+            if(mapD) setTimeout(() => mapD.invalidateSize(), 400);
+        }
+    }
+
+    function initMap(divId, type) {
+        setTimeout(() => {
+            if (type === 'p' && !mapP) {
+                mapP = L.map(divId).setView([26.2285, 50.5860], 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapP);
+                L.Control.geocoder({ 
+                    defaultMarkGeocode: true, 
+                    placeholder: "ابحث في البحرين...", 
+                    geocoder: L.Control.Geocoder.nominatim({ geocodingQueryParams: { countrycodes: 'bh' } }) 
+                }).on('markgeocode', e => {
+                    if(markerP) mapP.removeLayer(markerP);
+                    markerP = L.marker(e.geocode.center).addTo(mapP);
+                    mapP.setView(e.geocode.center, 16);
+                }).addTo(mapP);
+                mapP.on('click', e => {
+                    if(markerP) mapP.removeLayer(markerP);
+                    markerP = L.marker(e.latlng).addTo(mapP);
+                });
+            } else if (type === 'd' && !mapD) {
+                mapD = L.map(divId).setView([26.2285, 50.5860], 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapD);
+                L.Control.geocoder({ 
+                    defaultMarkGeocode: true, 
+                    placeholder: "ابحث في البحرين...", 
+                    geocoder: L.Control.Geocoder.nominatim({ geocodingQueryParams: { countrycodes: 'bh' } }) 
+                }).on('markgeocode', e => {
+                    if(markerD) mapD.removeLayer(markerD);
+                    markerD = L.marker(e.geocode.center).addTo(mapD);
+                    mapD.setView(e.geocode.center, 16);
+                }).addTo(mapD);
+                mapD.on('click', e => {
+                    if(markerD) mapD.removeLayer(markerD);
+                    markerD = L.marker(e.latlng).addTo(mapD);
+                });
+            }
+        }, 300);
+    }
+
+    function getCurrentLocation(type) {
+        if (!navigator.geolocation) return alert("المتصفح لا يدعم GPS");
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude; const lng = pos.coords.longitude;
+            if (lat >= BH_BOUNDS.latMin && lat <= BH_BOUNDS.latMax && lng >= BH_BOUNDS.lngMin && lng <= BH_BOUNDS.lngMax) {
+                const loc = [lat, lng];
+                if (type === 'p') {
+                    if(markerP) mapP.removeLayer(markerP);
+                    markerP = L.marker(loc).addTo(mapP); mapP.setView(loc, 17);
+                } else {
+                    if(markerD) mapD.removeLayer(markerD);
+                    markerD = L.marker(loc).addTo(mapD); mapD.setView(loc, 17);
+                }
+            } else { alert("موقعك خارج حدود البحرين"); }
+        }, () => alert("فشل تحديد الموقع - تأكد من تشغيل الموقع في هاتفك"), {enableHighAccuracy: true});
+    }
+
+    function sendNow(img) {
+        if (isSendingOrder) return;
+        const pPhone = document.getElementById('p-phone').value.trim();
+        const pArea = document.getElementById('p-area').value.trim();
+        const pBlock = document.getElementById('p-block').value.trim();
+        const pRoad = document.getElementById('p-road').value.trim();
+        const pHouse = document.getElementById('p-house').value.trim();
+        const dPhone = document.getElementById('d-phone').value.trim();
+        const dArea = document.getElementById('d-area').value.trim();
+        const dBlock = document.getElementById('d-block').value.trim();
+        const dRoad = document.getElementById('d-road').value.trim();
+        const dHouse = document.getElementById('d-house').value.trim();
+        const dCollection = document.getElementById('d-collection').value.trim();
+
+        if(!pPhone || !pArea || !pBlock || !pRoad || !pHouse || !dPhone || !dArea || !dBlock || !dRoad || !dHouse) {
+            return alert("يرجى إكمال جميع البيانات الإجبارية");
+        }
+
+        isSendingOrder = true;
+        const btn = document.getElementById('final-send-btn');
+        btn.disabled = true; btn.innerText = "جاري الإرسال...";
+
+        let orderId = "ORD" + Date.now();
+        let data = {
+            id: orderId,
+            user: localStorage.getItem('uPhone') || pPhone,
+            status: 'waiting',
+            method: selectedMethod,
+            proofImage: img || "",
+            price: document.getElementById('final-price').innerText,
+            collectionAmount: dCollection || "0",
+            pPhone, pArea, pRoad, pBlock, pHouse,
+            pType: document.getElementById('p-type').value,
+            pLink: document.getElementById('p-link').value,
+            pickup: `https://www.google.com/maps?q=${markerP.getLatLng().lat},${markerP.getLatLng().lng}`,
+            dPhone, dArea, dRoad, dBlock, dHouse,
+            dType: document.getElementById('d-type').value,
+            dLink: document.getElementById('d-link').value,
+            dropoff: `https://www.google.com/maps?q=${markerD.getLatLng().lat},${markerD.getLatLng().lng}`,
+            timestamp: Date.now()
+        };
+
+        db.ref('orders/' + orderId).set(data).then(() => {
+            isSendingOrder = false;
+            goTo('page-success');
+        }).catch(() => { isSendingOrder = false; btn.disabled = false; btn.innerText = "إرسال الطلب الآن 🚀"; });
+    }
+
+    function confirmStep(step) {
+        if (step === 'pickup' && !markerP) return alert("حدد موقع الاستلام");
+        if (step === 'delivery' && !markerD) return alert("حدد موقع التسليم");
+        goTo(step === 'pickup' ? 'page-info-pickup' : 'page-info-delivery');
+    }
+
+    // --- دالة الحساب المعدلة حسب طلبك: 0.125 لكل كيلو ---
+    function calculateFinalPrice() {
+        if(!markerP || !markerD) return alert("يرجى تحديد المواقع أولاً");
+        
+        let rawDist = markerP.getLatLng().distanceTo(markerD.getLatLng()) / 1000;
+        
+        // 1. تقريب المسافة للأدنى (Floor)
+        let roundedDist = Math.floor(rawDist);
+        
+        // 2. الحساب: كل كيلو بـ 0.125 دينار
+        let calcPrice = roundedDist * 0.125;
+        
+        // 3. الحد الأدنى للتوصيل 0.750 دينار
+        let finalPrice = Math.max(calcPrice, 0.750).toFixed(3);
+        
+        document.getElementById('dist-info').innerText = "المسافة (بعد التقريب): " + roundedDist + " كم";
+        document.getElementById('final-price').innerText = finalPrice + " د.ب";
+        goTo('page-payment');
+    }
+
+    function selectPay(m) {
+        selectedMethod = m;
+        document.getElementById('btn-cash').className = 'pay-btn' + (m === 'Cash' ? ' selected-cash' : '');
+        document.getElementById('btn-benefit').className = 'pay-btn' + (m === 'Benefit' ? ' selected-benefit' : '');
+        document.getElementById('ben-box').style.display = (m === 'Benefit' ? 'block' : 'none');
+        document.getElementById('final-send-btn').disabled = false;
+        document.getElementById('final-send-btn').style.opacity = "1";
+    }
+
+    async function preSendCheck() {
+        let imgData = "";
+        if(selectedMethod === 'Benefit') {
+            const file = document.getElementById('pay-img').files[0];
+            if(!file) return alert("يرجى إرفاق صورة التحويل");
+            imgData = await new Promise(r => { const rd = new FileReader(); rd.readAsDataURL(file); rd.onload = () => r(rd.result); });
+        }
+        sendNow(imgData);
+    }
+
+    function loadOrders() {
+        let userPhone = localStorage.getItem('uPhone');
+        let list = document.getElementById('list-container');
+        list.innerHTML = "<p style='text-align:center;'>جاري تحميل طلباتك...</p>";
+        db.ref('orders').orderByChild('user').equalTo(userPhone).on('value', snap => {
+            list.innerHTML = "";
+            if (!snap.exists()) { list.innerHTML = "<p style='text-align:center;'>لا توجد طلبات سابقة</p>"; return; }
+            let orders = []; snap.forEach(c => { let o = c.val(); o.key = c.key; orders.push(o); });
+            orders.sort((a,b) => b.timestamp - a.timestamp).forEach(o => {
+                let statusText = getStatusText(o.status);
+                list.innerHTML += `
+                    <div class="order-card" onclick='openOrderDetails(${JSON.stringify(o)})'>
+                        <div style="padding:15px; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <b style="font-size:16px;">طلب #${o.key.slice(-5)}</b><br>
+                                <small style="color:#888;">${new Date(o.timestamp).toLocaleDateString('ar-BH')}</small>
+                            </div>
+                            <div style="text-align:left;">
+                                <span style="color:var(--red); font-weight:bold;">${statusText}</span><br>
+                                <b style="color:#333;">${o.price}</b>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+            list.innerHTML += `<div style="height:80px; width:100%;"></div>`;
+        });
+    }
+
+    function getStatusText(s) {
+        if(s === 'waiting') return "قيد الانتظار";
+        if(s === 'accepted') return "جاري التجهيز 🚚";
+        if(s === 'picked') return "استلم المندوب 🏁";
+        if(s === 'completed') return "تم التسليم ✅";
+        if(s === 'canceled') return "ملغي ❌";
+        return "غير معروف";
+    }
+
+    function openOrderDetails(o) {
+        let statusT = getStatusText(o.status);
+        let cancelBtn = (o.status === 'waiting' || o.status === 'accepted') ? `<button class="btn-red" onclick="cancelOrder('${o.key}'); closeDetails();">إلغاء الطلب 🗑️</button>` : "";
+        let driverInfo = o.driverName ? `<div class="info-card-huge" style="border-right-color:var(--benefit-blue); background:#e3f2fd;"><b>بيانات المندوب:</b><br>${o.driverName} | <a href="tel:${o.driverPhone}">اتصال 📞</a></div>` : "";
+
+        document.getElementById('details-render-area').innerHTML = `
+            <div class="info-card-huge" style="border-right-color:var(--red);">
+                <b>حالة الطلب:</b> <span style="color:var(--red); font-weight:bold; font-size:18px;">${statusT}</span>
+            </div>
+            <div class="info-card-huge" style="border-right-color:#ff9800; background: #fffbe6;">
+                <b style="color:#e65100;"><i class="fas fa-hand-holding-usd"></i> مبلغ التحصيل من الزبون:</b><br>
+                <span style="font-size: 22px; font-weight: bold;">${o.collectionAmount || "0"} د.ب</span>
+            </div>
+            <div class="info-card-huge" style="border-right-color:var(--red);">
+                <b style="color:var(--red);">📍 موقع الاستلام (من):</b><br>
+                ${o.pArea}, مجمع ${o.pBlock}, طريق ${o.pRoad}, منزل ${o.pHouse}<br>
+                <small>رقم الهاتف: ${o.pPhone}</small>
+            </div>
+            <div class="info-card-huge" style="border-right-color:var(--success);">
+                <b style="color:var(--success);">🏁 موقع التسليم (إلى):</b><br>
+                ${o.dArea}, مجمع ${o.dBlock}, طريق ${o.dRoad}, منزل ${o.dHouse}<br>
+                <small>رقم هاتف الزبون: ${o.dPhone}</small>
+            </div>
+            <div class="info-card-huge" style="text-align:center; background:#fff5f5; border-right-color:var(--red);">
+                <b>رسوم التوصيل:</b><br>
+                <span style="font-size:24px; color:var(--red); font-weight:bold;">${o.price}</span>
+            </div>
+            ${driverInfo}
+            ${cancelBtn}
+            <div style="height:50px;"></div>
+        `;
+        document.getElementById('full-details-overlay').style.display = 'block';
+    }
+
+    function closeDetails() { document.getElementById('full-details-overlay').style.display = 'none'; }
+    function cancelOrder(key) { if(confirm("هل أنت متأكد من إلغاء الطلب؟")) db.ref('orders/'+key).update({status:'canceled'}); }
+    
+    function secureLogin() {
+        let ph = document.getElementById('login-phone').value.trim();
+        let ps = document.getElementById('login-pass').value.trim();
+        db.ref('users/' + ph).once('value', s => {
+            if(s.exists() && s.val().password === ps) { localStorage.setItem('uPhone', ph); goTo('page-home'); }
+            else alert("خطأ في بيانات الدخول، يرجى المحاولة مرة أخرى.");
+        });
+    }
+
+    function finishRegistration() {
+        let ph = document.getElementById('reg-phone').value.trim();
+        let nm = document.getElementById('reg-name').value.trim();
+        let ps = document.getElementById('reg-pass').value.trim();
+        if(ph && nm && ps) db.ref('users/'+ph).set({name: nm, password: ps}).then(() => {
+            alert("تم التسجيل بنجاح!");
+            goTo('page-login');
+        });
+        else alert("يرجى ملء جميع الحقول");
+    }
+
+    function logout() { localStorage.clear(); location.reload(); }
+</script>
+</body>
+</html>
